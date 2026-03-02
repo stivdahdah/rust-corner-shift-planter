@@ -117,7 +117,7 @@ Corner Shift Planter is designed for minimal performance impact:
 * No persistent data files
 * Clears all timers and memory on unload
 
-Suitable for high-population servers (200–300+ players).
+Suitable for high-population servers (200–300  players).
 
 ---
 
@@ -156,14 +156,14 @@ It is a focused, minimal enhancement rather than a gameplay overhaul.
 
 ---
 
-## Version
-
-Current Version: 1.0.1
-
----
-
 ## License
 
 MIT License
 
 ---
+
+## Credits
+
+Inspiration for this concept came from SHADOWFRAX, who mentioned the idea during a YouTube discussion about  planting in Rust.
+
+This plugin is an independent implementation and is not affiliated with or endorsed by SHADOWFRAX.
