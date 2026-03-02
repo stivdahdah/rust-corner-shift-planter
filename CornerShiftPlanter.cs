@@ -1,17 +1,19 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Corner Shift Planter", "Steven D.", "1.0.0")]
-    [Description("Allows players to plant only the four corner slots in a Large Planter Box while holding Shift, when enabled via command.")]
-
+    [Info("Corner Shift Planter", "YourName", "1.0.1")]
+    [Description("Allows players to plant only the four corner slots in a Large Planter Box while holding Shift, when enabled via command, with optional auto-disable.")]
     public class CornerShiftPlanter : RustPlugin
     {
         private const string PermissionUse = "cornershiftplanter.use";
 
-        private HashSet<ulong> enabledPlayers = new HashSet<ulong>();
-        private PluginConfig config;
+        private readonly HashSet<ulong> _enabledPlayers = new HashSet<ulong>();
+        private readonly Dictionary<ulong, Timer> _autoDisableTimers = new Dictionary<ulong, Timer>();
+
+        private PluginConfig _config;
 
         #region Configuration
 
@@ -20,74 +22,146 @@ namespace Oxide.Plugins
             public bool LargePlanterOnly = true;
             public bool RequireShift = true;
             public float CenterThreshold = 0.2f;
+
+            // Auto-disable after X seconds (0 = never auto-disable)
+            public int AutoDisableSeconds = 120;
         }
 
         protected override void LoadDefaultConfig()
         {
-            config = new PluginConfig();
+            _config = new PluginConfig();
             SaveConfig();
         }
 
         protected override void LoadConfig()
         {
             base.LoadConfig();
-            config = Config.ReadObject<PluginConfig>() ?? new PluginConfig();
+            try
+            {
+                _config = Config.ReadObject<PluginConfig>() ?? new PluginConfig();
+            }
+            catch
+            {
+                PrintWarning("Config is invalid/corrupt. Recreating default config.");
+                _config = new PluginConfig();
+            }
+            SaveConfig();
         }
 
         protected override void SaveConfig()
         {
-            Config.WriteObject(config, true);
+            Config.WriteObject(_config, true);
         }
 
         #endregion
 
-        #region Localization
+        #region Localization (Lang API)
 
         protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 ["NoPermission"] = "You do not have permission to use this feature.",
-                ["ModeEnabled"] = "Corner planting mode enabled.",
-                ["ModeDisabled"] = "Corner planting mode disabled."
+                ["ModeEnabled"] = "Corner planting mode enabled{0}.",
+                ["ModeDisabled"] = "Corner planting mode disabled.",
+                ["AutoDisabled"] = "Corner planting mode automatically disabled."
             }, this);
         }
 
         private string Msg(string key, BasePlayer player) =>
-            lang.GetMessage(key, this, player.UserIDString);
+            lang.GetMessage(key, this, player?.UserIDString);
 
         #endregion
 
-        void Init()
+        #region Lifecycle
+
+        private void Init()
         {
             permission.RegisterPermission(PermissionUse, this);
+
+            // Only subscribe when needed
+            Unsubscribe(nameof(OnEntitySpawned));
         }
 
-        void Unload()
+        private void Unload()
         {
-            enabledPlayers.Clear();
+            foreach (var t in _autoDisableTimers.Values)
+                t?.Destroy();
+
+            _autoDisableTimers.Clear();
+            _enabledPlayers.Clear();
         }
+
+        #endregion
 
         #region Command
 
         [ChatCommand("corner")]
-        private void ToggleCommand(BasePlayer player, string command, string[] args)
+        private void CmdCorner(BasePlayer player, string command, string[] args)
         {
+            if (player == null) return;
+
             if (!permission.UserHasPermission(player.UserIDString, PermissionUse))
             {
                 player.ChatMessage(Msg("NoPermission", player));
                 return;
             }
 
-            if (enabledPlayers.Contains(player.userID))
+            if (_enabledPlayers.Contains(player.userID))
             {
-                enabledPlayers.Remove(player.userID);
-                player.ChatMessage(Msg("ModeDisabled", player));
+                DisablePlayer(player, auto: false);
+                return;
             }
-            else
+
+            EnablePlayer(player);
+        }
+
+        private void EnablePlayer(BasePlayer player)
+        {
+            _enabledPlayers.Add(player.userID);
+
+            // Ensure hook is active while at least one player is enabled
+            Subscribe(nameof(OnEntitySpawned));
+
+            // Cancel existing timer (if any)
+            CancelAutoDisableTimer(player.userID);
+
+            string suffix = _config.AutoDisableSeconds > 0
+                ? $" for {_config.AutoDisableSeconds} seconds"
+                : string.Empty;
+
+            player.ChatMessage(string.Format(Msg("ModeEnabled", player), suffix));
+
+            if (_config.AutoDisableSeconds > 0)
             {
-                enabledPlayers.Add(player.userID);
-                player.ChatMessage(Msg("ModeEnabled", player));
+                Timer playerTimer = this.timer.Once(_config.AutoDisableSeconds, () =>
+                {
+                    if (player == null || !player.IsConnected) return;
+                    DisablePlayer(player, auto: true);
+                });
+
+                _autoDisableTimers[player.userID] = playerTimer;
+            }
+        }
+
+        private void DisablePlayer(BasePlayer player, bool auto)
+        {
+            _enabledPlayers.Remove(player.userID);
+            CancelAutoDisableTimer(player.userID);
+
+            player.ChatMessage(Msg(auto ? "AutoDisabled" : "ModeDisabled", player));
+
+            // If no one is using it, stop listening to spawn events
+            if (_enabledPlayers.Count == 0)
+                Unsubscribe(nameof(OnEntitySpawned));
+        }
+
+        private void CancelAutoDisableTimer(ulong userId)
+        {
+            if (_autoDisableTimers.TryGetValue(userId, out var existing))
+            {
+                existing?.Destroy();
+                _autoDisableTimers.Remove(userId);
             }
         }
 
@@ -107,31 +181,31 @@ namespace Oxide.Plugins
                 PlanterBox planter = plant.GetParentEntity() as PlanterBox;
                 if (planter == null) return;
 
-                if (config.LargePlanterOnly &&
-                    planter.ShortPrefabName != "planter.large.deployed")
+                if (_config.LargePlanterOnly && planter.ShortPrefabName != "planter.large.deployed")
                     return;
 
                 BasePlayer player = BasePlayer.FindByID(plant.OwnerID);
                 if (player == null) return;
 
-                if (!enabledPlayers.Contains(player.userID))
+                if (!_enabledPlayers.Contains(player.userID))
                     return;
 
-                if (config.RequireShift &&
-                    !player.serverInput.IsDown(BUTTON.SPRINT))
-                    return;
+                if (_config.RequireShift)
+                {
+                    if (player.serverInput == null) return;
+                    if (!player.serverInput.IsDown(BUTTON.SPRINT)) return;
+                }
 
                 Vector3 localPos = plant.transform.localPosition;
 
-                if (Mathf.Abs(localPos.x) < config.CenterThreshold ||
-                    Mathf.Abs(localPos.z) < config.CenterThreshold)
+                // Corner slots have both x and z far from 0. Middle row/col has x or z near 0.
+                if (Mathf.Abs(localPos.x) < _config.CenterThreshold || Mathf.Abs(localPos.z) < _config.CenterThreshold)
                 {
                     int seedItemId = GetSeedItemId(plant.ShortPrefabName);
                     if (seedItemId != 0)
                     {
-                        player.inventory.GiveItem(
-                            ItemManager.CreateByItemID(seedItemId, 1)
-                        );
+                        // Refund 1 seed for each deleted plant
+                        player.inventory.GiveItem(ItemManager.CreateByItemID(seedItemId, 1));
                     }
 
                     plant.Kill();
@@ -145,8 +219,7 @@ namespace Oxide.Plugins
 
         private int GetSeedItemId(string prefabShortName)
         {
-            string seedShortname = "";
-
+            string seedShortname;
             switch (prefabShortName)
             {
                 case "hemp.entity": seedShortname = "seed.hemp"; break;
