@@ -166,4 +166,4 @@ MIT License
 
 Inspiration for this concept came from srtbull, who mentioned the idea during a YouTube discussion about  planting in Rust.
 
-This plugin is an independent implementation and is not affiliated with or endorsed by SHADOWFRAX.
+This plugin is an independent implementation and is not affiliated with or endorsed by srtbull.
