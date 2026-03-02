@@ -1,70 +1,83 @@
-# Corner Shift Planter (Rust Plugin)
+## Overview
 
-Corner Shift Planter allows players to plant seeds only in the four corner slots of a Large Planter Box while holding Shift, when enabled via a toggle command.
+Corner Shift Planter allows players to plant seeds exclusively in the four corner slots of a Large Planter Box while holding Shift, when enabled via a simple toggle command.
 
-This plugin preserves vanilla Rust planting mechanics while giving players optional precision planting control.
+This plugin enhances planting precision while preserving vanilla Rust behavior. It does not automate planting or override core mechanics — it simply filters out non-corner plants and refunds the seeds.
 
----
-
-## 🔹 Features
-
-- Per-player toggle system
-- Permission controlled
-- Optional Shift requirement
-- Auto-disable timer (configurable)
-- Supports all vanilla seed types
-- Optimized for high-population servers
-- No reflection or deprecated API usage
+The system is permission-controlled, configurable, lightweight, and optimized for high-population servers.
 
 ---
 
-## 🔹 Command
+## Key Features
+
+* Per-player toggle using `/corner`
+* Permission-controlled access
+* Optional Shift key requirement
+* Configurable center detection threshold
+* Configurable auto-disable timer
+* Supports all vanilla seed types
+* Dynamic hook subscription for performance
+* No reflection or deprecated API usage
+* Clean memory handling on unload
+
+---
+
+## How It Works
+
+When enabled:
+
+1. Player types `/corner`
+2. Player holds Shift while planting
+3. Rust performs normal 3x3 planting
+4. The plugin removes non-corner plants
+5. The consumed seeds are automatically refunded
+6. Only the four corner plants remain
+
+The plugin does not modify world entities beyond the initial plant spawn and does not alter growth behavior.
+
+---
+
+## Commands
 
 ```
-
 /corner
-
 ```
 
 Toggles corner planting mode for the player.
 
+If auto-disable is enabled, the mode will turn off automatically after the configured duration.
+
 ---
 
-## 🔹 Permission
+## Permission
 
 ```
-
 cornershiftplanter.use
-
 ```
 
 Grant to default group:
-```
 
+```
 oxide.grant group default cornershiftplanter.use
-
 ```
 
-Grant to VIP:
-```
+Grant to VIP group:
 
+```
 oxide.grant group vip cornershiftplanter.use
-
 ```
 
 ---
 
-## 🔹 Configuration
+## Configuration
 
 Located at:
 
 ```
-
 oxide/config/CornerShiftPlanter.json
+```
 
-````
-
-Example:
+Example configuration:
 
 ```json
 {
@@ -73,68 +86,84 @@ Example:
   "CenterThreshold": 0.2,
   "AutoDisableSeconds": 120
 }
-````
+```
 
-### Config Options Explained
+### Configuration Options
 
 **LargePlanterOnly**
-
-* If true, only affects Large Planter Boxes.
+If true, functionality applies only to Large Planter Boxes.
 
 **RequireShift**
-
-* Player must hold Shift while planting.
+If true, players must hold Shift while planting.
 
 **CenterThreshold**
-
-* Controls how center/edge slots are detected.
+Controls the tolerance used to detect center or edge slots.
+Adjust only if Rust planting offsets change in future updates.
 
 **AutoDisableSeconds**
-
-* Automatically disables corner mode after X seconds.
-* Set to 0 to disable auto-off.
-
----
-
-## 🔹 How It Works
-
-When enabled:
-
-1. Player types `/corner`
-2. Player holds Shift
-3. Rust plants normally (3x3 grid)
-4. Plugin removes non-corner plants
-5. Seeds are refunded automatically
-6. Only 4 corner plants remain
+Automatically disables corner planting after X seconds.
+Set to `0` to disable auto-off behavior.
 
 ---
 
-## 🔹 Performance
+## Performance & Optimization
 
-* Dynamically subscribes to hooks
-* No heavy scanning
+Corner Shift Planter is designed for minimal performance impact:
+
+* Dynamically subscribes to hooks only when active
+* Uses lightweight `NextTick` execution
+* No heavy entity scanning
 * No LINQ allocations
-* No reflection
-* Safe for 300+ player servers
+* No persistent data files
+* Clears all timers and memory on unload
+
+Suitable for high-population servers (200–300+ players).
 
 ---
 
-## 🔹 Compatibility
+## Compatibility
 
-* Fully compatible with vanilla Rust
-* Does not override growth mechanics
-* Does not conflict with crop systems
+* Fully compatible with vanilla Rust mechanics
+* Does not override growth systems
+* Does not modify entity prefabs
+* Does not conflict with farming or crop plugins
+* Safe to use alongside automation systems
 
 ---
 
-## 🔹 Version
+## Why Choose Corner Shift Planter?
+
+Unlike automation-based farming plugins that override planting mechanics or enforce layouts globally, this plugin:
+
+* Preserves default Rust behavior
+* Gives players optional control
+* Requires explicit activation
+* Maintains gameplay balance
+* Avoids intrusive world modifications
+
+It is a focused, minimal enhancement rather than a gameplay overhaul.
+
+---
+
+## Abuse & Safety Considerations
+
+* Feature gated behind permission
+* Requires explicit player activation
+* Optional Shift enforcement
+* Optional auto-disable timer
+* No background processing when inactive
+* No admin abuse potential
+
+---
+
+## Version
 
 Current Version: 3.2.1
 
 ---
 
-## 🔹 License
+## License
 
 MIT License
 
-```
+---
