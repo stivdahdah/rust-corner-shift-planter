@@ -158,7 +158,7 @@ It is a focused, minimal enhancement rather than a gameplay overhaul.
 
 ## Version
 
-Current Version: 3.2.1
+Current Version: 1.0.1
 
 ---
 
