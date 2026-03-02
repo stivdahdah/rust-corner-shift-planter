@@ -4,7 +4,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Corner Shift Planter", "YourName", "1.0.1")]
+    [Info("Corner Shift Planter", "stevend", "1.0.2")]
     [Description("Allows players to plant only the four corner slots in a Large Planter Box while holding Shift, when enabled via command, with optional auto-disable.")]
     public class CornerShiftPlanter : RustPlugin
     {
