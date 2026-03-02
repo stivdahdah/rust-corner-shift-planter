@@ -164,6 +164,6 @@ MIT License
 
 ## Credits
 
-Inspiration for this concept came from SHADOWFRAX, who mentioned the idea during a YouTube discussion about  planting in Rust.
+Inspiration for this concept came from srtbull, who mentioned the idea during a YouTube discussion about  planting in Rust.
 
 This plugin is an independent implementation and is not affiliated with or endorsed by SHADOWFRAX.
