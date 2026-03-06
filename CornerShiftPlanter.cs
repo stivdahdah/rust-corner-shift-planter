@@ -1,36 +1,40 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Corner Shift Planter", "stevend", "1.1.0")]
-    [Description("Allows players to plant only the four corner slots in a Large Planter Box while holding Shift. Toggleable via chat command with optional auto-disable.")]
+    [Info("Corner Shift Planter", "stevend", "1.2.0")]
+    [Description("Allows players to plant only in the four corner slots of a Large Planter Box while holding SHIFT. Includes guide and simple corner-mode toggle. Permission: cornershiftplanter.use")]
     public class CornerShiftPlanter : RustPlugin
     {
         #region Fields
 
         private const string PermissionUse = "cornershiftplanter.use";
 
-        private readonly HashSet<ulong> enabledPlayers = new HashSet<ulong>();
-        private readonly Dictionary<ulong, Timer> autoDisableTimers = new Dictionary<ulong, Timer>();
+        private readonly HashSet<ulong> _cornerEnabledPlayers = new HashSet<ulong>();
+        private readonly Dictionary<ulong, Oxide.Plugins.Timer> _autoDisableTimers =
+            new Dictionary<ulong, Oxide.Plugins.Timer>();
 
-        private PluginConfig config;
+        private PluginConfig _config;
 
         #endregion
 
-        #region Configuration
+        #region Config
 
         private class PluginConfig
         {
             public bool LargePlanterOnly = true;
             public bool RequireShift = true;
-            public float CenterThreshold = 0.2f;
-            public int AutoDisableSeconds = 120; // 0 = disabled
+            public float CenterThreshold = 0.20f;
+            public int AutoDisableSeconds = 120;
+            public bool RefundSeeds = true;
+            public bool ShowGuideOnEnable = true;
         }
 
         protected override void LoadDefaultConfig()
         {
-            config = new PluginConfig();
+            _config = new PluginConfig();
             SaveConfig();
         }
 
@@ -40,13 +44,13 @@ namespace Oxide.Plugins
 
             try
             {
-                config = Config.ReadObject<PluginConfig>();
-                if (config == null)
-                    throw new System.Exception();
+                _config = Config.ReadObject<PluginConfig>();
+                if (_config == null)
+                    throw new Exception("Config file was null.");
             }
-            catch
+            catch (Exception ex)
             {
-                PrintWarning("Configuration file is invalid. Generating new default config.");
+                PrintWarning($"Configuration error detected, generating new config. Reason: {ex.Message}");
                 LoadDefaultConfig();
             }
 
@@ -55,7 +59,7 @@ namespace Oxide.Plugins
 
         protected override void SaveConfig()
         {
-            Config.WriteObject(config, true);
+            Config.WriteObject(_config, true);
         }
 
         #endregion
@@ -67,20 +71,32 @@ namespace Oxide.Plugins
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 ["NoPermission"] = "You do not have permission to use this feature.",
-                ["ModeEnabled"] = "Corner planting mode enabled{0}.",
-                ["ModeDisabled"] = "Corner planting mode disabled.",
-                ["AutoDisabled"] = "Corner planting mode automatically disabled."
+                ["CornerEnabled"] = "Corner planting mode enabled{0}.",
+                ["CornerDisabled"] = "Corner planting mode disabled.",
+                ["AutoDisabled"] = "Corner planting mode automatically disabled.",
+                ["GuideHeader"] = "Genetics corner layout:",
+                ["GuideLine1"] = "C  X  C",
+                ["GuideLine2"] = "X  X  X",
+                ["GuideLine3"] = "C  X  C",
+                ["GuideFooter"] = "C = plant allowed, X = keep empty",
+                ["InvalidPlant"] = "Invalid planting slot. Only the 4 corner slots are allowed in Corner Mode.",
+                ["HelpToggle"] = "/corner - toggle corner planting mode",
+                ["HelpGuide"] = "/corner guide - show allowed planting pattern",
+                ["HelpOn"] = "/corner on - enable corner planting mode",
+                ["HelpOff"] = "/corner off - disable corner planting mode",
+                ["HelpHelp"] = "/corner help - show this help",
+                ["NeedShift"] = "You must hold SHIFT while planting for Corner Mode to apply."
             }, this);
         }
 
-        private string Msg(string key, BasePlayer player)
+        private string Msg(string key, BasePlayer player = null)
         {
-            return lang.GetMessage(key, this, player.UserIDString);
+            return lang.GetMessage(key, this, player?.UserIDString);
         }
 
         #endregion
 
-        #region Initialization
+        #region Hooks
 
         private void Init()
         {
@@ -88,18 +104,25 @@ namespace Oxide.Plugins
             Unsubscribe(nameof(OnEntitySpawned));
         }
 
+        private void OnServerInitialized()
+        {
+            Puts("Corner Shift Planter loaded successfully.");
+        }
+
         private void Unload()
         {
-            foreach (var timer in autoDisableTimers.Values)
+            foreach (var timer in _autoDisableTimers.Values)
+            {
                 timer?.Destroy();
+            }
 
-            autoDisableTimers.Clear();
-            enabledPlayers.Clear();
+            _autoDisableTimers.Clear();
+            _cornerEnabledPlayers.Clear();
         }
 
         #endregion
 
-        #region Command
+        #region Commands
 
         [ChatCommand("corner")]
         private void CmdCorner(BasePlayer player, string command, string[] args)
@@ -113,57 +136,124 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (enabledPlayers.Contains(player.userID))
+            if (args != null && args.Length > 0)
             {
-                DisablePlayer(player, false);
+                var sub = args[0].ToLowerInvariant();
+
+                switch (sub)
+                {
+                    case "guide":
+                    case "guid":
+                        ShowGuide(player);
+                        return;
+
+                    case "on":
+                        if (!_cornerEnabledPlayers.Contains(player.userID))
+                            EnableCornerMode(player);
+                        return;
+
+                    case "off":
+                        if (_cornerEnabledPlayers.Contains(player.userID))
+                            DisableCornerMode(player, false);
+                        return;
+
+                    case "help":
+                        ShowHelp(player);
+                        return;
+                }
+
+                ShowHelp(player);
+                return;
             }
-            else
-            {
-                EnablePlayer(player);
-            }
+
+            ToggleCornerMode(player);
         }
 
-        private void EnablePlayer(BasePlayer player)
+        private void ToggleCornerMode(BasePlayer player)
         {
-            enabledPlayers.Add(player.userID);
+            if (_cornerEnabledPlayers.Contains(player.userID))
+            {
+                DisableCornerMode(player, false);
+                return;
+            }
+
+            EnableCornerMode(player);
+        }
+
+        private void EnableCornerMode(BasePlayer player)
+        {
+            _cornerEnabledPlayers.Add(player.userID);
             Subscribe(nameof(OnEntitySpawned));
 
             CancelAutoDisable(player.userID);
 
-            string suffix = config.AutoDisableSeconds > 0
-                ? $" for {config.AutoDisableSeconds} seconds"
+            string suffix = _config.AutoDisableSeconds > 0
+                ? $" for {_config.AutoDisableSeconds} seconds"
                 : string.Empty;
 
-            player.ChatMessage(string.Format(Msg("ModeEnabled", player), suffix));
+            player.ChatMessage(string.Format(Msg("CornerEnabled", player), suffix));
 
-            if (config.AutoDisableSeconds > 0)
+            if (_config.ShowGuideOnEnable)
             {
-                autoDisableTimers[player.userID] = timer.Once(config.AutoDisableSeconds, () =>
+                ShowGuide(player);
+            }
+
+            if (_config.RequireShift)
+            {
+                player.ChatMessage(Msg("NeedShift", player));
+            }
+
+            if (_config.AutoDisableSeconds > 0)
+            {
+                _autoDisableTimers[player.userID] = timer.Once(_config.AutoDisableSeconds, () =>
                 {
                     if (player != null && player.IsConnected)
-                        DisablePlayer(player, true);
+                    {
+                        DisableCornerMode(player, true);
+                    }
                 });
             }
         }
 
-        private void DisablePlayer(BasePlayer player, bool automatic)
+        private void DisableCornerMode(BasePlayer player, bool automatic)
         {
-            enabledPlayers.Remove(player.userID);
+            _cornerEnabledPlayers.Remove(player.userID);
             CancelAutoDisable(player.userID);
 
-            player.ChatMessage(Msg(automatic ? "AutoDisabled" : "ModeDisabled", player));
+            player.ChatMessage(Msg(automatic ? "AutoDisabled" : "CornerDisabled", player));
 
-            if (enabledPlayers.Count == 0)
+            if (_cornerEnabledPlayers.Count == 0)
+            {
                 Unsubscribe(nameof(OnEntitySpawned));
+            }
         }
 
         private void CancelAutoDisable(ulong userId)
         {
-            if (autoDisableTimers.TryGetValue(userId, out Timer existing))
+            Oxide.Plugins.Timer existing;
+            if (_autoDisableTimers.TryGetValue(userId, out existing))
             {
-                existing.Destroy();
-                autoDisableTimers.Remove(userId);
+                existing?.Destroy();
+                _autoDisableTimers.Remove(userId);
             }
+        }
+
+        private void ShowGuide(BasePlayer player)
+        {
+            player.ChatMessage(Msg("GuideHeader", player));
+            player.ChatMessage(Msg("GuideLine1", player));
+            player.ChatMessage(Msg("GuideLine2", player));
+            player.ChatMessage(Msg("GuideLine3", player));
+            player.ChatMessage(Msg("GuideFooter", player));
+        }
+
+        private void ShowHelp(BasePlayer player)
+        {
+            player.ChatMessage(Msg("HelpToggle", player));
+            player.ChatMessage(Msg("HelpGuide", player));
+            player.ChatMessage(Msg("HelpOn", player));
+            player.ChatMessage(Msg("HelpOff", player));
+            player.ChatMessage(Msg("HelpHelp", player));
         }
 
         #endregion
@@ -172,7 +262,7 @@ namespace Oxide.Plugins
 
         private void OnEntitySpawned(BaseEntity entity)
         {
-            GrowableEntity plant = entity as GrowableEntity;
+            var plant = entity as GrowableEntity;
             if (plant == null)
                 return;
 
@@ -181,37 +271,53 @@ namespace Oxide.Plugins
                 if (plant == null || plant.IsDestroyed)
                     return;
 
-                PlanterBox planter = plant.GetParentEntity() as PlanterBox;
+                var planter = plant.GetParentEntity() as PlanterBox;
                 if (planter == null)
                     return;
 
-                if (config.LargePlanterOnly &&
-                    planter.ShortPrefabName != "planter.large.deployed")
+                if (_config.LargePlanterOnly && planter.ShortPrefabName != "planter.large.deployed")
                     return;
 
-                BasePlayer player = BasePlayer.FindByID(plant.OwnerID);
+                var player = BasePlayer.FindByID(plant.OwnerID);
                 if (player == null)
                     return;
 
-                if (!enabledPlayers.Contains(player.userID))
+                if (!_cornerEnabledPlayers.Contains(player.userID))
                     return;
 
-                if (config.RequireShift)
+                if (_config.RequireShift)
                 {
-                    if (player.serverInput == null ||
-                        !player.serverInput.IsDown(BUTTON.SPRINT))
+                    if (player.serverInput == null || !player.serverInput.IsDown(BUTTON.SPRINT))
                         return;
                 }
 
-                Vector3 localPos = plant.transform.localPosition;
+                var localPos = plant.transform.localPosition;
 
-                if (Mathf.Abs(localPos.x) < config.CenterThreshold ||
-                    Mathf.Abs(localPos.z) < config.CenterThreshold)
+                bool isCornerAllowed = IsAllowedCorner(localPos, _config.CenterThreshold);
+
+                if (isCornerAllowed)
+                    return;
+
+                if (_config.RefundSeeds)
                 {
                     RefundSeed(player, plant.ShortPrefabName);
-                    plant.Kill();
                 }
+
+                plant.Kill();
             });
+        }
+
+        private bool IsAllowedCorner(Vector3 localPos, float centerThreshold)
+        {
+            bool xIsCenter = Mathf.Abs(localPos.x) < centerThreshold;
+            bool zIsCenter = Mathf.Abs(localPos.z) < centerThreshold;
+
+            // Only 4 corners allowed:
+            // reject center row or center column
+            if (xIsCenter || zIsCenter)
+                return false;
+
+            return true;
         }
 
         #endregion
@@ -220,32 +326,57 @@ namespace Oxide.Plugins
 
         private void RefundSeed(BasePlayer player, string prefabShortName)
         {
-            string seedShortname = null;
-
-            switch (prefabShortName)
-            {
-                case "hemp.entity": seedShortname = "seed.hemp"; break;
-                case "pumpkin.entity": seedShortname = "seed.pumpkin"; break;
-                case "corn.entity": seedShortname = "seed.corn"; break;
-                case "potato.entity": seedShortname = "seed.potato"; break;
-                case "berry.black.entity": seedShortname = "seed.black.berry"; break;
-                case "berry.blue.entity": seedShortname = "seed.blue.berry"; break;
-                case "berry.green.entity": seedShortname = "seed.green.berry"; break;
-                case "berry.red.entity": seedShortname = "seed.red.berry"; break;
-                case "berry.white.entity": seedShortname = "seed.white.berry"; break;
-                case "berry.yellow.entity": seedShortname = "seed.yellow.berry"; break;
-            }
-
+            string seedShortname = GetSeedShortname(prefabShortName);
             if (string.IsNullOrEmpty(seedShortname))
                 return;
 
-            ItemDefinition def = ItemManager.FindItemDefinition(seedShortname);
+            var def = ItemManager.FindItemDefinition(seedShortname);
             if (def == null)
                 return;
 
-            Item item = ItemManager.Create(def, 1);
-            if (item != null)
-                player.inventory.GiveItem(item);
+            var item = ItemManager.Create(def, 1);
+            if (item == null)
+                return;
+
+            player.inventory.GiveItem(item);
+        }
+
+        private string GetSeedShortname(string prefabShortName)
+        {
+            switch (prefabShortName)
+            {
+                case "hemp.entity":
+                    return "seed.hemp";
+
+                case "pumpkin.entity":
+                    return "seed.pumpkin";
+
+                case "corn.entity":
+                    return "seed.corn";
+
+                case "potato.entity":
+                    return "seed.potato";
+
+                case "berry.black.entity":
+                    return "seed.black.berry";
+
+                case "berry.blue.entity":
+                    return "seed.blue.berry";
+
+                case "berry.green.entity":
+                    return "seed.green.berry";
+
+                case "berry.red.entity":
+                    return "seed.red.berry";
+
+                case "berry.white.entity":
+                    return "seed.white.berry";
+
+                case "berry.yellow.entity":
+                    return "seed.yellow.berry";
+            }
+
+            return null;
         }
 
         #endregion
