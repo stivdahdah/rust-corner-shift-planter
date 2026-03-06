@@ -11,6 +11,8 @@ The system is permission-controlled, configurable, lightweight, and optimized fo
 ## Key Features
 
 * Per-player toggle using `/corner`
+* Explicit enable/disable commands (`/corner on`, `/corner off`)
+* Built-in planting layout guide using `/corner guide`
 * Permission-controlled access
 * Optional Shift key requirement
 * Configurable center detection threshold
@@ -26,7 +28,7 @@ The system is permission-controlled, configurable, lightweight, and optimized fo
 
 When enabled:
 
-1. Player types `/corner`
+1. Player types `/corner` or `/corner on`
 2. Player holds Shift while planting
 3. Rust performs normal 3x3 planting
 4. The plugin removes non-corner plants
@@ -40,10 +42,29 @@ The plugin does not modify world entities beyond the initial plant spawn and doe
 ## Commands
 
 ```
+
 /corner
+/corner on
+/corner off
+/corner guide
+/corner help
+
 ```
 
+**/corner**  
 Toggles corner planting mode for the player.
+
+**/corner on**  
+Explicitly enables corner planting mode.
+
+**/corner off**  
+Disables corner planting mode.
+
+**/corner guide**  
+Displays the recommended corner planting layout.
+
+**/corner help**  
+Shows command help.
 
 If auto-disable is enabled, the mode will turn off automatically after the configured duration.
 
@@ -52,19 +73,25 @@ If auto-disable is enabled, the mode will turn off automatically after the confi
 ## Permission
 
 ```
+
 cornershiftplanter.use
+
 ```
 
 Grant to default group:
 
 ```
+
 oxide.grant group default cornershiftplanter.use
+
 ```
 
 Grant to VIP group:
 
 ```
+
 oxide.grant group vip cornershiftplanter.use
+
 ```
 
 ---
@@ -74,8 +101,10 @@ oxide.grant group vip cornershiftplanter.use
 Located at:
 
 ```
+
 oxide/config/CornerShiftPlanter.json
-```
+
+````
 
 Example configuration:
 
@@ -84,9 +113,11 @@ Example configuration:
   "LargePlanterOnly": true,
   "RequireShift": true,
   "CenterThreshold": 0.2,
-  "AutoDisableSeconds": 120
+  "AutoDisableSeconds": 120,
+  "RefundSeeds": true,
+  "ShowGuideOnEnable": true
 }
-```
+````
 
 ### Configuration Options
 
@@ -104,6 +135,12 @@ Adjust only if Rust planting offsets change in future updates.
 Automatically disables corner planting after X seconds.
 Set to `0` to disable auto-off behavior.
 
+**RefundSeeds**
+If enabled, seeds consumed by removed plants will be refunded to the player.
+
+**ShowGuideOnEnable**
+Displays the corner planting layout guide when the mode is enabled.
+
 ---
 
 ## Performance & Optimization
@@ -117,7 +154,7 @@ Corner Shift Planter is designed for minimal performance impact:
 * No persistent data files
 * Clears all timers and memory on unload
 
-Suitable for high-population servers (200–300  players).
+Suitable for high-population servers (200–300 players).
 
 ---
 
@@ -128,6 +165,7 @@ Suitable for high-population servers (200–300  players).
 * Does not modify entity prefabs
 * Does not conflict with farming or crop plugins
 * Safe to use alongside automation systems
+* Compatible with both **uMod (Oxide)** and **Carbon**
 
 ---
 
@@ -164,6 +202,9 @@ MIT License
 
 ## Credits
 
-Inspiration for this concept came from srtbull, who mentioned the idea during a YouTube discussion about  planting in Rust.
+Inspiration for this concept came from **srtbull**, who mentioned the idea during a YouTube discussion about planting layouts in Rust.
 
 This plugin is an independent implementation and is not affiliated with or endorsed by srtbull.
+
+```
+
